@@ -1,0 +1,180 @@
+#!/bin/bash
+set -eo pipefail
+DEBUG=false
+
+#-----------------------------------------------------------------NoticeStart-
+# Flutter Utilities
+# Copyright (c) 2022 Breno Teodoro
+#
+# MIT License
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#-----------------------------------------------------------------NoticeEnd---
+#
+# flinstall
+#
+# Provides an easy way for installing Flutter. Supports multiple platforms.
+#
+
+# Supporting functions, alphabetized...
+
+# Echo to stderr
+echoStderr() {
+  # - if necessary, quote the string to be printed
+  # - redirect stdout from echo to stderr
+  echo "$@" 1>&2
+}
+
+# Print a DEBUG message
+# - prints to stderr
+# - call with parameters or pipe stdout and stderr to this function: 2>&1 | logDebug
+# - print empty lines with a space " " to avoid hanging the program waiting on stdin input
+logDebug() {
+  if [ -n "${1}" ]; then
+    echoStderr "[DEBUG] $*"
+  else
+    while read -r inputLine; do
+      echoStderr "[DEBUG] ${inputLine}"
+    done
+  fi
+}
+
+# Parse the command line and set variables to control logic
+parseCommandLine() {
+  # shellcheck disable=SC2034
+  local OPTIND opt h o v
+  optstring=":ho:v"
+  while getopts $optstring opt; do
+    if [ "$DEBUG" = true ]; then logDebug "Command line option is $opt"; fi
+    case $opt in
+    h) # -h  Print usage
+      printUsage
+      exit 0
+      ;;
+    o) # -o installLocation
+      INSTALL_LOCATION=$OPTARG
+      ;;
+    v) # -v  Print the version
+      printVersion
+      exit 0
+      ;;
+    \?) # Unknown single-character option
+      echo "Invalid option:  -$OPTARG" >&2
+      exit 1
+      ;;
+    :) # Option is recognized but it is missing an argument
+      echo "Option -$OPTARG requires an argument" >&2
+      exit 1
+      ;;
+    esac
+  done
+  # Get a list of all command line options that do not correspond to dash options.
+  # - These are "non-option" arguments.
+  # - For example, one or more file or folder names that need to be processed.
+  # - If multiple values, they will be delimited by spaces.
+  # - Command line * will result in expansion to matching files and folders.
+  shift $((OPTIND - 1))
+  FLUTTER_VERSION=$*
+
+  PATTERN="^[0-9]+.[0-9]+.[0-9]+$"
+
+  if [[ -z $FLUTTER_VERSION ]]; then
+    echo "Missing required positional parameter: flutter version." >&2
+    exit 1
+  elif [[ $FLUTTER_VERSION == *" "* ]]; then
+    echo "Expected only one positional parameter: flutter version." >&2
+    exit 1
+  elif [[ ! $FLUTTER_VERSION =~ $PATTERN ]]; then
+    echo "Could not parse flutter version. Must match semVer-like pattern: 0.0.0" >&2
+    exit 1
+  fi
+}
+
+# Print the program usage
+# - calling code needs to exit with the appropriate status
+printUsage() {
+  echo ""
+  echo "$program [options] <flutter version>"
+  echo ""
+  echo "Installs Flutter on your machine and outputs the installation path (including bin folder)."
+  echo ""
+  echo "Example usage:"
+  echo ""
+  echo "FL_PATH=\$(bash flinstall 2.10.0)"
+  echo "echo \"export PATH=\${FL_PATH}:\${PATH}\" >> ~/.bashrc"
+  echo "source ~/.bashrc"
+  echo ""
+  echo "Options are:"
+  echo ""
+  echo "-h                          Print help."
+  echo "-o [outputLocation]         Specify the installation path (default is $HOME/development)."
+  echo "-v                          Print version."
+  echo ""
+}
+
+# Print the program version
+# - calling code needs to exit with the appropriate status
+printVersion() {
+  echo "$program version:  $version $versionDate"
+  echo ""
+}
+
+# Main entry point into shell
+program=$(basename "$0")
+version="1.0.0"
+versionDate="2022-05-03"
+
+# Initialize variables
+FLUTTER_VERSION=""
+INSTALL_LOCATION="$HOME/development"
+
+# Parse the command line options
+# - pass all arguments to the function
+parseCommandLine "$@"
+
+if [ "$DEBUG" = true ]; then
+  logDebug "Flutter version is ${FLUTTER_VERSION}"
+  logDebug "Installation path is ${INSTALL_LOCATION}"
+fi
+
+if [ ! -d "$INSTALL_LOCATION/flutter" ]; then
+  mkdir -p "$INSTALL_LOCATION"
+  if [ "$(uname)" = 'Darwin' ]; then
+    if [ "$DEBUG" = true ]; then logDebug "Running on MacOS"; fi
+    curl --fail --remote-time --silent --show-error --location -o flutter_sdk.zip "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_${FLUTTER_VERSION}-stable.zip"
+    unzip -qq flutter_sdk.zip -d "$INSTALL_LOCATION"
+    rm flutter_sdk.zip
+  elif [ "$(expr substr "$(uname -s)" 1 5)" = 'Linux' ]; then
+    if [ "$DEBUG" = true ]; then logDebug "Running on Linux"; fi
+    curl --fail --remote-time --silent --show-error --location -o flutter_sdk.tar.xz "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
+    tar xf flutter_sdk.tar.xz -C "$INSTALL_LOCATION"
+    rm -f flutter_sdk.tar.xz
+  elif [ "$OSTYPE" = "cygwin" ] || [ "$OSTYPE" = "msys" ]; then
+    if [ "$DEBUG" = true ]; then logDebug "Running on Windows"; fi
+    curl --fail --remote-time --silent --show-error --location -o flutter_sdk.zip "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${FLUTTER_VERSION}-stable.zip"
+    unzip -qq flutter_sdk.zip -d "$INSTALL_LOCATION"
+    rm flutter_sdk.zip
+  else
+    echo "Your platform ($(uname -a)) is not supported." >&2
+    exit 1
+  fi
+fi
+
+echo "$INSTALL_LOCATION/flutter/bin"
+exit 0
