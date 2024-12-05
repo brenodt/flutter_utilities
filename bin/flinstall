@@ -157,7 +157,14 @@ if [ ! -d "$INSTALL_LOCATION/flutter" ]; then
   mkdir -p "$INSTALL_LOCATION"
   if [ "$(uname)" = 'Darwin' ]; then
     if [ "$DEBUG" = true ]; then logDebug "Running on MacOS"; fi
-    curl --fail --remote-time --silent --show-error --location -o flutter_sdk.zip "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_${FLUTTER_VERSION}-stable.zip"
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "arm64" ]; then
+      if [ "$DEBUG" = true ]; then logDebug "Detected ARM64 architecture"; fi
+      curl --fail --remote-time --silent --show-error --location -o flutter_sdk.zip "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_arm64_${FLUTTER_VERSION}-stable.zip"
+    else
+      if [ "$DEBUG" = true ]; then logDebug "Detected AMD64 (x86_64) architecture"; fi
+      curl --fail --remote-time --silent --show-error --location -o flutter_sdk.zip "https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_${FLUTTER_VERSION}-stable.zip"
+    fi
     unzip -qq flutter_sdk.zip -d "$INSTALL_LOCATION"
     rm flutter_sdk.zip
   elif [ "$(expr substr "$(uname -s)" 1 5)" = 'Linux' ]; then
